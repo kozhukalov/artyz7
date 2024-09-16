@@ -3,4 +3,4 @@
 	url = https://github.com/u-boot/u-boot.git
 [submodule "linux-xlnx"]
 	path = linux-xlnx
-	url = ./linux-xlnx
+	url = https://github.com/Xilinx/linux-xlnx.git

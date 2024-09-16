@@ -19,11 +19,20 @@ DEVICE_TREE:=artyz7
 DEFCONFIG:=artyz7_defconfig
 SUDO:=sudo
 SD_DEVICE_BOOT?=/dev/disk/by-uuid/4F5C-19B0
+UBOOT_SOURCE_DIR?=$(SOURCE_DIR)/u-boot
+UBOOT_BUILD_DIR?=$(BUILD_DIR)/u-boot
+LINUX_SOURCE_DIR?=$(SOURCE_DIR)/linux-xlnx
+LINUX_BUILD_DIR?=$(BUILD_DIR)/linux
 
-.PHONY: all sd clean clean-u-boot clean-sd
+
+.PHONY: all clean
 
 all: $(BUILD_DIR)/boot.done
+all: $(BUILD_DIR)/linux.done
+clean: clean-u-boot clean-linux clean-boot
 
+### SD card targets
+.PHONY: sd
 sd: $(BUILD_DIR)/boot.done
 sd: export SD_DEVICE_BOOT = $(SD_DEVICE_BOOT)
 sd: export SD_SCRIPT = \
@@ -38,14 +47,9 @@ sd:
 		read answer; \
 		if [[ $${answer} != $${answer#[Yy]} ]]; then bash -c "$${SD_SCRIPT}"; fi
 
-clean: clean-u-boot clean-boot
-clean-u-boot:
-	$(MAKE) -C $(SOURCE_DIR)/u-boot O=$(BUILD_DIR)/u-boot distclean
-	rm $(SOURCE_DIR)/u-boot/configs/artyz7_defconfig
-	rm $(SOURCE_DIR)/u-boot/arch/arm/dts/artyz7.dts
-clean-boot:
-	rm -rf $(BUILD_DIR)/boot
 
+
+### Cross-compile targets
 $(BUILD_DIR)/$(CROSS_COMPILE_TGZ):
 	mkdir -p $(BUILD_DIR)
 	wget $(CROSS_COMPILE_URL)/$(CROSS_COMPILE_TGZ) \
@@ -55,26 +59,63 @@ $(BUILD_DIR)/cross-compile.done: $(BUILD_DIR)/$(CROSS_COMPILE_TGZ)
 	tar zxf $(BUILD_DIR)/$(CROSS_COMPILE_TGZ) -C $(BUILD_DIR)
 	$(ACTION.TOUCH)
 
-$(SOURCE_DIR)/u-boot/configs/artyz7_defconfig: $(SOURCE_DIR)/artyz7_defconfig
+### U-boot targets
+.PHONY: u-boot
+u-boot: $(BUILD_DIR)/u-boot.done
+
+$(UBOOT_SOURCE_DIR)/configs/artyz7_defconfig: $(SOURCE_DIR)/artyz7_defconfig
 	$(ACTION.COPY)
 
-$(BUILD_DIR)/u-boot/.config: $(SOURCE_DIR)/u-boot/configs/artyz7_defconfig
-	mkdir -p $(BUILD_DIR)/u-boot
-	$(MAKE) -C $(SOURCE_DIR)/u-boot O=$(BUILD_DIR)/u-boot artyz7_defconfig
+$(UBOOT_BUILD_DIR)/.config: $(UBOOT_SOURCE_DIR)/configs/artyz7_defconfig
+	mkdir -p $(UBOOT_BUILD_DIR)
+	$(MAKE) -C $(UBOOT_SOURCE_DIR) O=$(UBOOT_BUILD_DIR) ARCH=$(ARCH) artyz7_defconfig
 
-$(SOURCE_DIR)/u-boot/arch/arm/dts/artyz7.dts: $(SOURCE_DIR)/artyz7.dts
+$(UBOOT_SOURCE_DIR)/arch/arm/dts/artyz7.dts: $(SOURCE_DIR)/artyz7.dts
 	$(ACTION.COPY)
 
-$(BUILD_DIR)/u-boot/u-boot.elf $(BUILD_DIR)/u-boot/arch/arm/dts/artyz7.dtb: \
+$(UBOOT_BUILD_DIR)/u-boot.elf $(UBOOT_BUILD_DIR)/arch/arm/dts/artyz7.dtb: \
 		$(BUILD_DIR)/cross-compile.done \
-		$(BUILD_DIR)/u-boot/.config \
-		$(SOURCE_DIR)/u-boot/arch/arm/dts/artyz7.dts
-	$(MAKE) -C $(SOURCE_DIR)/u-boot ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) DEVICE_TREE=$(DEVICE_TREE) O=$(BUILD_DIR)/u-boot
+		$(UBOOT_BUILD_DIR)/.config \
+		$(UBOOT_SOURCE_DIR)/arch/arm/dts/artyz7.dts
+	$(MAKE) -C $(UBOOT_SOURCE_DIR) O=$(UBOOT_BUILD_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) DEVICE_TREE=$(DEVICE_TREE)
 
 $(BUILD_DIR)/u-boot.done: \
-		$(BUILD_DIR)/u-boot/u-boot.elf \
-		$(BUILD_DIR)/u-boot/arch/arm/dts/artyz7.dtb
+		$(UBOOT_BUILD_DIR)/u-boot.elf \
+		$(UBOOT_BUILD_DIR)/arch/arm/dts/artyz7.dtb
 	$(ACTION.TOUCH)
+
+.PHONY: clean-u-boot
+clean-u-boot:
+	$(MAKE) -C $(SOURCE_DIR)/u-boot O=$(UBOOT_BUILD_DIR) distclean
+	rm $(SOURCE_DIR)/u-boot/configs/artyz7_defconfig
+	rm $(SOURCE_DIR)/u-boot/arch/arm/dts/artyz7.dts
+	rm -rf $(UBOOT_BUILD_DIR)
+
+### Linux targets
+.PHONY: linux
+linux: $(BUILD_DIR)/linux.done
+
+$(LINUX_SOURCE_DIR)/arch/arm/configs/xilinx_zynq_defconfig: $(SOURCE_DIR)/xilinx_zynq_defconfig
+	$(ACTION.COPY)
+
+$(LINUX_BUILD_DIR)/.config: $(LINUX_SOURCE_DIR)/arch/arm/configs/xilinx_zynq_defconfig
+	mkdir -p $(LINUX_BUILD_DIR)
+	$(MAKE) -C $(LINUX_SOURCE_DIR) O=$(LINUX_BUILD_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) xilinx_zynq_defconfig
+
+$(BUILD_DIR)/linux.done: \
+		$(BUILD_DIR)/cross-compile.done \
+		$(LINUX_BUILD_DIR)/.config
+	$(MAKE) -C $(LINUX_SOURCE_DIR) O=$(LINUX_BUILD_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) UIMAGE_LOADADDR=0x3000000 uImage
+	$(ACTION.TOUCH)
+
+.PHONY: clean-linux
+clean-linux:
+	$(MAKE) -C $(LINUX_SOURCE_DIR) O=$(LINUX_BUILD_DIR) ARCH=$(ARCH) mproper
+	rm -rf $(LINUX_BUILD_DIR)
+
+### Boot targets
+.PHONY: boot
+boot: $(BUILD_DIR)/boot.done
 
 $(BUILD_DIR)/boot/boot.bif: $(SOURCE_DIR)/sd/boot.bif
 	$(ACTION.COPY)
@@ -82,10 +123,10 @@ $(BUILD_DIR)/boot/boot.bif: $(SOURCE_DIR)/sd/boot.bif
 $(BUILD_DIR)/boot/fsbl.elf: $(SOURCE_DIR)/sd/zynq_fsbl.elf
 	$(ACTION.COPY)
 
-$(BUILD_DIR)/boot/u-boot.elf: $(BUILD_DIR)/u-boot/u-boot.elf
+$(BUILD_DIR)/boot/u-boot.elf: $(UBOOT_BUILD_DIR)/u-boot.elf
 	$(ACTION.COPY)
 
-$(BUILD_DIR)/boot/system.dtb: $(BUILD_DIR)/u-boot/arch/arm/dts/artyz7.dtb
+$(BUILD_DIR)/boot/system.dtb: $(UBOOT_BUILD_DIR)/arch/arm/dts/artyz7.dtb
 	$(ACTION.COPY)
 
 $(BUILD_DIR)/boot/BOOT.BIN: \
@@ -103,3 +144,6 @@ $(BUILD_DIR)/boot.done: \
 		$(BUILD_DIR)/boot/BOOT.BIN
 	$(ACTION.TOUCH)
 
+.PHONY: clean-boot
+clean-boot:
+	rm -rf $(BUILD_DIR)/boot
