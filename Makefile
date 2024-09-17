@@ -14,6 +14,8 @@ include $(SOURCE_DIR)/rules.mk
 CROSS_COMPILE_URL?=https://mirrors.edge.kernel.org/pub/tools/crosstool/files/bin/x86_64/13.3.0
 CROSS_COMPILE_TGZ?=x86_64-gcc-13.3.0-nolibc-arm-linux-gnueabi.tar.gz
 CROSS_COMPILE?=$(BUILD_DIR)/gcc-13.3.0-nolibc/arm-linux-gnueabi/bin/arm-linux-gnueabi-
+ROOTFS_URL?=https://cdimage.ubuntu.com/ubuntu-base/releases/22.04/release
+ROOTFS_TGZ?=ubuntu-base-22.04-base-armhf.tar.gz
 ARCH:=arm
 DEVICE_TREE:=artyz7
 DEFCONFIG:=artyz7_defconfig
@@ -32,22 +34,20 @@ all: $(BUILD_DIR)/linux.done
 clean: clean-u-boot clean-linux clean-boot
 
 ### SD card targets
-.PHONY: sd
-sd: $(BUILD_DIR)/boot.done
-sd: export SD_DEVICE_BOOT = $(SD_DEVICE_BOOT)
-sd: export SD_SCRIPT = \
+.PHONY: bootsd
+bootsd: $(BUILD_DIR)/boot.done
+bootsd: export SD_DEVICE_BOOT = $(SD_DEVICE_BOOT)
+bootsd: export SD_SCRIPT = \
 	$(SUDO) mount ${SD_DEVICE_BOOT} $(BUILD_DIR)/mnt_boot && \
 	$(SUDO) cp $(BUILD_DIR)/boot/* $(BUILD_DIR)/mnt_boot && \
 	$(SUDO) chown root:root $(BUILD_DIR)/mnt_boot/* && \
 	$(SUDO) umount ${SD_DEVICE_BOOT}
-sd:
+bootsd:
 	@mkdir -p $(BUILD_DIR)/mnt_boot
 	@echo "We are about to run the following command: $${SD_SCRIPT}"
 	@echo "Are you sure you want to continue (y/n)?"; \
 		read answer; \
 		if [[ $${answer} != $${answer#[Yy]} ]]; then bash -c "$${SD_SCRIPT}"; fi
-
-
 
 ### Cross-compile targets
 $(BUILD_DIR)/$(CROSS_COMPILE_TGZ):
@@ -68,7 +68,7 @@ $(UBOOT_SOURCE_DIR)/configs/artyz7_defconfig: $(SOURCE_DIR)/artyz7_defconfig
 
 $(UBOOT_BUILD_DIR)/.config: $(UBOOT_SOURCE_DIR)/configs/artyz7_defconfig
 	mkdir -p $(UBOOT_BUILD_DIR)
-	$(MAKE) -C $(UBOOT_SOURCE_DIR) O=$(UBOOT_BUILD_DIR) ARCH=$(ARCH) artyz7_defconfig
+	$(MAKE) -j4 -C $(UBOOT_SOURCE_DIR) O=$(UBOOT_BUILD_DIR) ARCH=$(ARCH) artyz7_defconfig
 
 $(UBOOT_SOURCE_DIR)/arch/arm/dts/artyz7.dts: $(SOURCE_DIR)/artyz7.dts
 	$(ACTION.COPY)
@@ -77,7 +77,7 @@ $(UBOOT_BUILD_DIR)/u-boot.elf $(UBOOT_BUILD_DIR)/arch/arm/dts/artyz7.dtb: \
 		$(BUILD_DIR)/cross-compile.done \
 		$(UBOOT_BUILD_DIR)/.config \
 		$(UBOOT_SOURCE_DIR)/arch/arm/dts/artyz7.dts
-	$(MAKE) -C $(UBOOT_SOURCE_DIR) O=$(UBOOT_BUILD_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) DEVICE_TREE=$(DEVICE_TREE)
+	$(MAKE) -j4 -C $(UBOOT_SOURCE_DIR) O=$(UBOOT_BUILD_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) DEVICE_TREE=$(DEVICE_TREE)
 
 $(BUILD_DIR)/u-boot.done: \
 		$(UBOOT_BUILD_DIR)/u-boot.elf \
@@ -92,8 +92,9 @@ clean-u-boot:
 	rm -rf $(UBOOT_BUILD_DIR)
 
 ### Linux targets
-.PHONY: linux
+.PHONY: linux linux-modules
 linux: $(BUILD_DIR)/linux.done
+linux-modules: $(BUILD_DIR)/linux_modules.done
 
 $(LINUX_SOURCE_DIR)/arch/arm/configs/xilinx_zynq_defconfig: $(SOURCE_DIR)/xilinx_zynq_defconfig
 	$(ACTION.COPY)
@@ -102,10 +103,18 @@ $(LINUX_BUILD_DIR)/.config: $(LINUX_SOURCE_DIR)/arch/arm/configs/xilinx_zynq_def
 	mkdir -p $(LINUX_BUILD_DIR)
 	$(MAKE) -C $(LINUX_SOURCE_DIR) O=$(LINUX_BUILD_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) xilinx_zynq_defconfig
 
-$(BUILD_DIR)/linux.done: \
+$(LINUX_BUILD_DIR)/arch/arm/boot/uImage: \
 		$(BUILD_DIR)/cross-compile.done \
 		$(LINUX_BUILD_DIR)/.config
-	$(MAKE) -C $(LINUX_SOURCE_DIR) O=$(LINUX_BUILD_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) UIMAGE_LOADADDR=0x3000000 uImage
+	$(MAKE) -j4 -C $(LINUX_SOURCE_DIR) O=$(LINUX_BUILD_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) UIMAGE_LOADADDR=0x3000000 uImage
+	$(ACTION.TOUCH)
+
+$(BUILD_DIR)/linux.done: $(LINUX_BUILD_DIR)/arch/arm/boot/uImage
+
+$(BUILD_DIR)/linux_modules.done: \
+		$(BUILD_DIR)/cross-compile.done \
+		$(LINUX_BUILD_DIR)/.config
+	$(MAKE) -j4 -C $(LINUX_SOURCE_DIR) O=$(LINUX_BUILD_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) modules
 	$(ACTION.TOUCH)
 
 .PHONY: clean-linux
@@ -113,7 +122,7 @@ clean-linux:
 	$(MAKE) -C $(LINUX_SOURCE_DIR) O=$(LINUX_BUILD_DIR) ARCH=$(ARCH) mproper
 	rm -rf $(LINUX_BUILD_DIR)
 
-### Boot targets
+### Bootfs targets
 .PHONY: boot
 boot: $(BUILD_DIR)/boot.done
 
@@ -147,3 +156,37 @@ $(BUILD_DIR)/boot.done: \
 .PHONY: clean-boot
 clean-boot:
 	rm -rf $(BUILD_DIR)/boot
+
+### Rootfs targets
+.PHONY: rootfs
+rootfs: $(BUILD_DIR)/rootfs.done
+
+$(BUILD_DIR)/$(ROOTFS_TGZ):
+	mkdir -p $(BUILD_DIR)
+	wget $(ROOTFS_URL)/$(ROOTFS_TGZ) -O $(BUILD_DIR)/$(ROOTFS_TGZ)
+
+$(BUILD_DIR)/rootfs_untar.done: $(BUILD_DIR)/$(ROOTFS_TGZ)
+	mkdir -p $(BUILD_DIR)/rootfs
+	tar zxf $(BUILD_DIR)/$(ROOTFS_TGZ) -C $(BUILD_DIR)/rootfs
+	$(ACTION.TOUCH)
+
+$(BUILD_DIR)/rootfs_passwd.done: $(BUILD_DIR)/rootfs_untar.done
+	echo "root:root" | sudo chpasswd -R $(BUILD_DIR)/rootfs
+	$(ACTION.TOUCH)
+
+$(BUILD_DIR)/rootfs_modules.done: \
+		$(BUILD_DIR)/rootfs_untar.done \
+		$(BUILD_DIR)/linux_modules.done
+	$(MAKE) -C $(LINUX_SOURCE_DIR) O=$(LINUX_BUILD_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) modules_install INSTALL_MOD_PATH=$(BUILD_DIR)/rootfs
+	$(ACTION.TOUCH)
+
+$(BUILD_DIR)/rootfs.done: \
+		$(BUILD_DIR)/rootfs_passwd.done \
+		$(BUILD_DIR)/rootfs_modules.done
+	$(ACTION.TOUCH)
+
+.PHONY: clean-rootfs
+clean-rootfs:
+	$(BUILD_DIR)/rootfs_untar.done
+	rm -rf $(BUILD_DIR)/rootfs
+
