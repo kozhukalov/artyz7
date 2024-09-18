@@ -25,7 +25,7 @@ UBOOT_DEFCONFIG:=uboot_defconfig
 LINUX_DEFCONFIG:=linux_defconfig
 BUSYBOX_DEFCONFIG:=busybox_defconfig
 SUDO:=sudo
-SD_DEVICE_BOOT?=/dev/disk/by-uuid/4F5C-19B0
+_SD_DEVICE_BOOT?=/dev/disk/by-uuid/4F5C-19B0
 UBOOT_SOURCE_DIR?=$(SOURCE_DIR)/u-boot
 UBOOT_BUILD_DIR?=$(BUILD_DIR)/u-boot
 LINUX_SOURCE_DIR?=$(SOURCE_DIR)/linux-xlnx
@@ -40,11 +40,11 @@ clean: clean-u-boot clean-linux clean-bootfs clean-rootfs clean-busybox clean-in
 
 ### SD card targets
 .PHONY: bootsd
-bootsd: $(BUILD_DIR)/boot.done
-bootsd: export SD_DEVICE_BOOT = $(SD_DEVICE_BOOT)
+bootsd: $(BUILD_DIR)/bootfs.done
+bootsd: export SD_DEVICE_BOOT = $(_SD_DEVICE_BOOT)
 bootsd: export SD_SCRIPT = \
 	$(SUDO) mount ${SD_DEVICE_BOOT} $(BUILD_DIR)/mnt_boot && \
-	$(SUDO) cp $(BUILD_DIR)/boot/* $(BUILD_DIR)/mnt_boot && \
+	$(SUDO) cp $(BUILD_DIR)/bootfs/* $(BUILD_DIR)/mnt_boot && \
 	$(SUDO) chown root:root $(BUILD_DIR)/mnt_boot/* && \
 	$(SUDO) umount ${SD_DEVICE_BOOT}
 bootsd:
@@ -147,6 +147,16 @@ $(BUILD_DIR)/bootfs/initramfs.cpio.gz: \
 		$(BUILD_DIR)/initramfs.done
 	cd $(BUILD_DIR)/initramfs && find . -print0 | cpio --null -ov --format=newc | gzip -9 > $@
 
+$(BUILD_DIR)/bootfs/boot.txt: $(SOURCE_DIR)/sd/boot.txt
+	$(ACTION.COPY)
+
+$(BUILD_DIR)/bootfs/boot.scr: export INITRAMFS_SIZE = $(shell stat -c %s $(BUILD_DIR)/bootfs/initramfs.cpio.gz)
+$(BUILD_DIR)/bootfs/boot.scr: \
+		$(BUILD_DIR)/bootfs/boot.txt \
+		$(BUILD_DIR)/bootfs/initramfs.cpio.gz
+	sed -i -e 's/__INITRAMFS_SIZE__/${INITRAMFS_SIZE}/g' $(BUILD_DIR)/bootfs/boot.txt
+	mkimage -A arm -T script -C none -n "Boot Script" -d $(BUILD_DIR)/bootfs/boot.txt $(BUILD_DIR)/bootfs/boot.scr
+
 $(BUILD_DIR)/bootfs/BOOT.BIN: \
 		$(BUILD_DIR)/bootfs/u-boot.elf \
 		$(BUILD_DIR)/bootfs/system.dtb \
@@ -160,7 +170,8 @@ $(BUILD_DIR)/bootfs.done: \
 		$(BUILD_DIR)/bootfs/fsbl.elf \
 		$(BUILD_DIR)/bootfs/boot.bif \
 		$(BUILD_DIR)/bootfs/BOOT.BIN \
-		$(BUILD_DIR)/bootfs/initramfs.cpio.gz
+		$(BUILD_DIR)/bootfs/initramfs.cpio.gz \
+		$(BUILD_DIR)/bootfs/boot.scr
 	$(ACTION.TOUCH)
 
 .PHONY: clean-bootfs
