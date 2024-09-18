@@ -1,0 +1,15 @@
+#!/bin/busybox sh
+
+/bin/busybox --install -s
+
+mount -t devtmpfs devtmpfs /dev
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t tmpfs tmpfs /tmp
+
+setsid cttyhack /bin/sh
+
+echo /sbin/mdev > /proc/sys/kernel/hotplug
+mdev -s
+
+exec /bin/sh
