@@ -244,10 +244,15 @@ $(BUILD_DIR)/rootfs_systemd.done: \
 	for i in $$(mount | grep $(BUILD_DIR)/rootfs/dev | awk '{ print $$3 }' | sort -r); do sudo umount $$i || break; done
 	$(ACTION.TOUCH)
 
+$(BUILD_DIR)/rootfs_getty.done: $(BUILD_DIR)/rootfs_systemd.done
+	sudo chroot $(BUILD_DIR)/rootfs bash -c "cd etc/systemd/system/getty.target.wants && rm getty@*.service && ln -s /lib/systemd/system/getty@.service getty@ttyPS0.service"
+	$(ACTION.TOUCH)
+
 $(BUILD_DIR)/rootfs.done: \
 		$(BUILD_DIR)/rootfs_passwd.done \
 		$(BUILD_DIR)/rootfs_modules.done \
-		$(BUILD_DIR)/rootfs_systemd.done
+		$(BUILD_DIR)/rootfs_systemd.done \
+		$(BUILD_DIR)/rootfs_getty.done
 	$(ACTION.TOUCH)
 
 .PHONY: clean-rootfs
