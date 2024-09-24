@@ -1,5 +1,5 @@
-setenv bootargs 'console=ttyPS0,115200 root=/dev/mmcblk0p2 rw rootwait earlyprintk'
+setenv bootargs 'console=ttyPS0,115200 root=/dev/mmcblk0p2 rw initrd=0x2000000,8M rootwait earlyprintk'
 fatload mmc 0:1 0x2000000 initramfs.cpio.gz
-fatload mmc 0:1 0x3000000 uImage
+fatload mmc 0:1 0x3000000 zImage
 fatload mmc 0:1 0x2a00000 system.dtb
-bootz 0x3000000 0x2000000:__INITRAMFS_SIZE__ 0x2a00000
+bootz 0x3000000 - 0x2a00000

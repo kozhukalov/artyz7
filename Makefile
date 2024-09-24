@@ -26,6 +26,7 @@ LINUX_DEFCONFIG:=linux_defconfig
 BUSYBOX_DEFCONFIG:=busybox_defconfig
 SUDO:=sudo
 _SD_DEVICE_BOOT?=/dev/disk/by-uuid/4F5C-19B0
+_SD_DEVICE_ROOT?=/dev/disk/by-uuid/a226a120-27be-400b-95c3-58fc9ec8a44c
 UBOOT_SOURCE_DIR?=$(SOURCE_DIR)/u-boot
 UBOOT_BUILD_DIR?=$(BUILD_DIR)/u-boot
 LINUX_SOURCE_DIR?=$(SOURCE_DIR)/linux-xlnx
@@ -34,8 +35,10 @@ LINUX_BUILD_DIR?=$(BUILD_DIR)/linux
 
 .PHONY: all clean
 
-all: $(BUILD_DIR)/boot.done
-all: $(BUILD_DIR)/linux.done
+all: $(BUILD_DIR)/u-boot.done
+all: $(BUILD_DIR)/linux.done $(BUILD_DIR)/linux_modules.done
+all: $(BUILD_DIR)/bootfs.done
+all: $(BUILD_DIR)/rootfs.done
 clean: clean-u-boot clean-linux clean-bootfs clean-rootfs clean-busybox clean-initramfs
 
 ### SD card targets
@@ -44,11 +47,26 @@ bootsd: $(BUILD_DIR)/bootfs.done
 bootsd: export SD_DEVICE_BOOT = $(_SD_DEVICE_BOOT)
 bootsd: export SD_SCRIPT = \
 	$(SUDO) mount ${SD_DEVICE_BOOT} $(BUILD_DIR)/mnt_boot && \
+	$(SUDO) rm -rf $(BUILD_DIR)/mnt_boot/* && \
 	$(SUDO) cp $(BUILD_DIR)/bootfs/* $(BUILD_DIR)/mnt_boot && \
 	$(SUDO) chown root:root $(BUILD_DIR)/mnt_boot/* && \
 	$(SUDO) umount ${SD_DEVICE_BOOT}
 bootsd:
 	@mkdir -p $(BUILD_DIR)/mnt_boot
+	@echo "We are about to run the following command: $${SD_SCRIPT}"
+	@echo "Are you sure you want to continue (y/n)?"; \
+		read answer; \
+		if [[ $${answer} != $${answer#[Yy]} ]]; then bash -c "$${SD_SCRIPT}"; fi
+
+rootsd: $(BUILD_DIR)/rootfs.done
+rootsd: export SD_DEVICE_ROOT = $(_SD_DEVICE_ROOT)
+rootsd: export SD_SCRIPT = \
+	$(SUDO) mount ${SD_DEVICE_ROOT} $(BUILD_DIR)/mnt_root && \
+	$(SUDO) rm -rf $(BUILD_DIR)/mnt_root/* && \
+	$(SUDO) rsync -a $(BUILD_DIR)/rootfs/ $(BUILD_DIR)/mnt_root && \
+	$(SUDO) umount ${SD_DEVICE_ROOT}
+rootsd:
+	@mkdir -p $(BUILD_DIR)/mnt_root
 	@echo "We are about to run the following command: $${SD_SCRIPT}"
 	@echo "Are you sure you want to continue (y/n)?"; \
 		read answer; \
@@ -108,13 +126,14 @@ $(LINUX_BUILD_DIR)/.config: $(LINUX_SOURCE_DIR)/arch/arm/configs/$(LINUX_DEFCONF
 	mkdir -p $(LINUX_BUILD_DIR)
 	$(MAKE) -C $(LINUX_SOURCE_DIR) O=$(LINUX_BUILD_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) $(LINUX_DEFCONFIG)
 
-$(LINUX_BUILD_DIR)/arch/arm/boot/uImage: \
+$(LINUX_BUILD_DIR)/arch/arm/boot/zImage: \
 		$(BUILD_DIR)/cross-compile.done \
 		$(LINUX_BUILD_DIR)/.config
-	$(MAKE) -j4 -C $(LINUX_SOURCE_DIR) O=$(LINUX_BUILD_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) UIMAGE_LOADADDR=0x3000000 uImage
+	$(MAKE) -j4 -C $(LINUX_SOURCE_DIR) O=$(LINUX_BUILD_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) UIMAGE_LOADADDR=0x3000000 zImage
 	$(ACTION.TOUCH)
 
-$(BUILD_DIR)/linux.done: $(LINUX_BUILD_DIR)/arch/arm/boot/uImage
+$(BUILD_DIR)/linux.done: $(LINUX_BUILD_DIR)/arch/arm/boot/zImage
+	$(ACTION.TOUCH)
 
 $(BUILD_DIR)/linux_modules.done: \
 		$(BUILD_DIR)/cross-compile.done \
@@ -157,6 +176,11 @@ $(BUILD_DIR)/bootfs/boot.scr: \
 	sed -i -e 's/__INITRAMFS_SIZE__/${INITRAMFS_SIZE}/g' $(BUILD_DIR)/bootfs/boot.txt
 	mkimage -A arm -T script -C none -n "Boot Script" -d $(BUILD_DIR)/bootfs/boot.txt $(BUILD_DIR)/bootfs/boot.scr
 
+$(BUILD_DIR)/bootfs/zImage: \
+		$(LINUX_BUILD_DIR)/arch/arm/boot/zImage \
+		$(BUILD_DIR)/linux.done
+	$(ACTION.COPY)
+
 $(BUILD_DIR)/bootfs/BOOT.BIN: \
 		$(BUILD_DIR)/bootfs/u-boot.elf \
 		$(BUILD_DIR)/bootfs/system.dtb \
@@ -171,6 +195,7 @@ $(BUILD_DIR)/bootfs.done: \
 		$(BUILD_DIR)/bootfs/boot.bif \
 		$(BUILD_DIR)/bootfs/BOOT.BIN \
 		$(BUILD_DIR)/bootfs/initramfs.cpio.gz \
+		$(BUILD_DIR)/bootfs/zImage \
 		$(BUILD_DIR)/bootfs/boot.scr
 	$(ACTION.TOUCH)
 
@@ -201,15 +226,40 @@ $(BUILD_DIR)/rootfs_modules.done: \
 	$(MAKE) -C $(LINUX_SOURCE_DIR) O=$(LINUX_BUILD_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) modules_install INSTALL_MOD_PATH=$(BUILD_DIR)/rootfs
 	$(ACTION.TOUCH)
 
+$(BUILD_DIR)/rootfs_systemd.done: \
+		$(BUILD_DIR)/rootfs_untar.done \
+		$(BUILD_DIR)/rootfs_modules.done
+	echo "nameserver 8.8.8.8" > $(BUILD_DIR)/rootfs/etc/resolv.conf
+	sudo mount --rbind /dev $(BUILD_DIR)/rootfs/dev/
+	sudo mount --make-rslave $(BUILD_DIR)/rootfs/dev/
+	sudo mount --rbind /sys $(BUILD_DIR)/rootfs/sys/
+	sudo mount --make-rslave $(BUILD_DIR)/rootfs/sys/
+	sudo mount -t proc none $(BUILD_DIR)/rootfs/proc/
+	sudo mount -t tmpfs none $(BUILD_DIR)/rootfs/tmp/
+	sudo chroot $(BUILD_DIR)/rootfs /bin/bash -c "apt-get update && apt-get install -y systemd"
+	sudo chroot $(BUILD_DIR)/rootfs /bin/bash -c "ln -s /lib/systemd/systemd /sbin/init"
+	sudo umount $(BUILD_DIR)/rootfs/tmp/
+	sudo umount $(BUILD_DIR)/rootfs/proc/
+	for i in $$(mount | grep $(BUILD_DIR)/rootfs/sys | awk '{ print $$3 }' | sort -r); do sudo umount $$i || break; done
+	for i in $$(mount | grep $(BUILD_DIR)/rootfs/dev | awk '{ print $$3 }' | sort -r); do sudo umount $$i || break; done
+	$(ACTION.TOUCH)
+
 $(BUILD_DIR)/rootfs.done: \
 		$(BUILD_DIR)/rootfs_passwd.done \
-		$(BUILD_DIR)/rootfs_modules.done
+		$(BUILD_DIR)/rootfs_modules.done \
+		$(BUILD_DIR)/rootfs_systemd.done
 	$(ACTION.TOUCH)
 
 .PHONY: clean-rootfs
 clean-rootfs:
-	$(BUILD_DIR)/rootfs_untar.done
-	rm -rf $(BUILD_DIR)/rootfs
+	sudo umount $(BUILD_DIR)/rootfs/tmp/ || true
+	sudo umount $(BUILD_DIR)/rootfs/proc/ || true
+	for i in $$(mount | grep $(BUILD_DIR)/rootfs/sys | awk '{ print $$3 }' | sort -r); do sudo umount $$i || break; done
+	for i in $$(mount | grep $(BUILD_DIR)/rootfs/dev | awk '{ print $$3 }' | sort -r); do sudo umount $$i || break; done
+	if ! mount | grep -q $(BUILD_DIR)/rootfs/sys && ! mount | grep -q $(BUILD_DIR)/rootfs/dev; then \
+		sudo rm -rf $(BUILD_DIR)/rootfs; \
+	fi
+	rm -f $(BUILD_DIR)/rootfs_untar.done
 
 ### Initramfs targets
 .PHONY: initramfs busybox
@@ -236,22 +286,31 @@ $(BUILD_DIR)/$(BUSYBOX_BASE)/busybox: \
 		$(BUILD_DIR)/cross-compile.done \
 		$(BUILD_DIR)/busybox_untar.done \
 		$(BUILD_DIR)/$(BUSYBOX_BASE)/.config
-	$(MAKE) -j4 -C $(BUILD_DIR)/$(BUSYBOX_BASE) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE)
+	$(MAKE) -j4 -C $(BUILD_DIR)/$(BUSYBOX_BASE) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) install
 	$(ACTION.TOUCH)
 
 $(BUILD_DIR)/initramfs/init: $(SOURCE_DIR)/initramfs.init
 	$(ACTION.COPY)
 
-$(BUILD_DIR)/initramfs/bin/busybox: $(BUILD_DIR)/$(BUSYBOX_BASE)/busybox
-	$(ACTION.COPY)
+$(BUILD_DIR)/initramfs/dev/sda:
+	mkdir -p $(BUILD_DIR)/initramfs/dev
+	cd $(BUILD_DIR)/initramfs/dev && sudo mknod sda b 8 0
+
+$(BUILD_DIR)/initramfs/dev/console:
+	mkdir -p $(BUILD_DIR)/initramfs/dev
+	cd $(BUILD_DIR)/initramfs/dev && sudo mknod console c 5 1
 
 $(BUILD_DIR)/initramfs.done: \
-		$(BUILD_DIR)/initramfs/bin/busybox \
-		$(BUILD_DIR)/initramfs/init
-	mkdir -p $(BUILD_DIR)/initramfs/{bin,sbin,dev,etc,home,mnt,proc,sys,usr,tmp}
+		$(BUILD_DIR)/$(BUSYBOX_BASE)/busybox \
+		$(BUILD_DIR)/linux_modules.done \
+		$(BUILD_DIR)/initramfs/init \
+		$(BUILD_DIR)/initramfs/dev/sda \
+		$(BUILD_DIR)/initramfs/dev/console
+	mkdir -p $(BUILD_DIR)/initramfs/{bin,sbin,dev,etc,mnt,proc,sys,usr,tmp}
 	mkdir -p $(BUILD_DIR)/usr/{bin,sbin}
 	mkdir -p $(BUILD_DIR)/proc/sys/kernel
-	cd $(BUILD_DIR)/initramfs/dev && sudo mknod sda b 8 0 && sudo mknod console c 5 1
+	rsync -a $(BUILD_DIR)/$(BUSYBOX_BASE)/_install/ $(BUILD_DIR)/initramfs
+	$(MAKE) -C $(LINUX_SOURCE_DIR) O=$(LINUX_BUILD_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) modules_install INSTALL_MOD_PATH=$(BUILD_DIR)/initramfs
 	$(ACTION.TOUCH)
 
 .PHONY: clean-busybox clean-initramfs
