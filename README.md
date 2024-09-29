@@ -56,8 +56,26 @@ make rootsd _SD_DEVICE_ROOT=/dev/sdb2
 ```
 
 ## Boot ArtyZ7
-Now insert the SD to the ArtyZ7 SD slot and set JP4 to boot from SD. To connect to the serial console via USB use the following command:
+Now insert the SD to the ArtyZ7 SD slot and set JP4 to boot from SD. To connect using the serial console via USB use the following command:
 ```bash
 sudo screen /dev/ttyUSB1 115200
 ```
 Once the OS is booted you can log in using username `root` and password `root` (it is set during build time).
+
+## Network
+Let's assume ArtyZ7 is connected to the workstation with Ethernet cable and the workstation itself is connected by means of something else to the public Internet. In this case you can configure both the ArtyZ7 board and the workstation so that ArtyZ7 has access to the Internet and you can use apt to install packages.
+
+#### Configure workstation
+`eth0` - connected to the Internet
+`eth1` - connected to ArtyZ7
+```bash
+ip a add 192.168.150.1/24 dev eth1
+iptables -t nat -I POSTROUTING -s 192.168.150.10 -o eth0 -j MASQUERADE
+```
+
+#### Configure ArtyZ7 (while connected using serial console)
+`eth0` - connected to workstation
+```bash
+ip a add 192.168.150.10/24 dev eth0
+ip r add via 192.168.150.1 dev eth0
+```
