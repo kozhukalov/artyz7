@@ -7,7 +7,10 @@ The procedure assumes the user running the script is able to mount/umount filesy
 ### If you use Fedora 39+
 ```bash
 dnf install uboot-tools dtc libuuid-devel libuuid
+dnf install kernel-modules-extra
+modprobe ftdi_sio
 ```
+
 ### Bootgen
 Xilinx bootgen command line tool must be installed (provided by Vitis) and it must be available in one of the directories listed in `$PATH`.
 
