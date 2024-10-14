@@ -109,9 +109,9 @@ $(BUILD_DIR)/u-boot.done: \
 
 .PHONY: clean-u-boot
 clean-u-boot:
-	$(MAKE) -C $(SOURCE_DIR)/u-boot O=$(UBOOT_BUILD_DIR) distclean
-	rm -f $(SOURCE_DIR)/u-boot/configs/$(UBOOT_DEFCONFIG)
-	rm -f $(SOURCE_DIR)/u-boot/arch/arm/dts/artyz7.dts
+	$(MAKE) -C $(UBOOT_SOURCE_DIR) O=$(UBOOT_BUILD_DIR) distclean
+	rm -f $(UBOOT_SOURCE_DIR)/configs/$(UBOOT_DEFCONFIG)
+	rm -f $(UBOOT_SOURCE_DIR)/arch/arm/dts/artyz7.dts
 	rm -rf $(UBOOT_BUILD_DIR)
 	rm -f $(BUILD_DIR)/u-boot.done
 
