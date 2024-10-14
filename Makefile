@@ -20,7 +20,7 @@ BUSYBOX_URL?=https://busybox.net/downloads
 BUSYBOX_BASE?=busybox-1.36.1
 BUSYBOX_TBZ2?=$(BUSYBOX_BASE).tar.bz2
 ARCH:=arm
-DEVICE_TREE:=artyz7
+DEVICE_TREE:=artyz7.dts
 UBOOT_DEFCONFIG:=uboot_defconfig
 LINUX_DEFCONFIG:=linux_defconfig
 BUSYBOX_DEFCONFIG:=busybox_defconfig
@@ -93,14 +93,14 @@ $(UBOOT_BUILD_DIR)/.config: $(UBOOT_SOURCE_DIR)/configs/$(UBOOT_DEFCONFIG)
 	mkdir -p $(UBOOT_BUILD_DIR)
 	$(MAKE) -j4 -C $(UBOOT_SOURCE_DIR) O=$(UBOOT_BUILD_DIR) ARCH=$(ARCH) $(UBOOT_DEFCONFIG)
 
-$(UBOOT_SOURCE_DIR)/arch/arm/dts/artyz7.dts: $(SOURCE_DIR)/artyz7.dts
+$(UBOOT_SOURCE_DIR)/arch/arm/dts/artyz7.dts: $(SOURCE_DIR)/$(DEVICE_TREE)
 	$(ACTION.COPY)
 
 $(UBOOT_BUILD_DIR)/u-boot.elf $(UBOOT_BUILD_DIR)/arch/arm/dts/artyz7.dtb: \
 		$(BUILD_DIR)/cross-compile.done \
 		$(UBOOT_BUILD_DIR)/.config \
 		$(UBOOT_SOURCE_DIR)/arch/arm/dts/artyz7.dts
-	$(MAKE) -j4 -C $(UBOOT_SOURCE_DIR) O=$(UBOOT_BUILD_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) DEVICE_TREE=$(DEVICE_TREE)
+	$(MAKE) -j4 -C $(UBOOT_SOURCE_DIR) O=$(UBOOT_BUILD_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) DEVICE_TREE=artyz7
 
 $(BUILD_DIR)/u-boot.done: \
 		$(UBOOT_BUILD_DIR)/u-boot.elf \
@@ -110,9 +110,10 @@ $(BUILD_DIR)/u-boot.done: \
 .PHONY: clean-u-boot
 clean-u-boot:
 	$(MAKE) -C $(SOURCE_DIR)/u-boot O=$(UBOOT_BUILD_DIR) distclean
-	rm $(SOURCE_DIR)/u-boot/configs/$(UBOOT_DEFCONFIG)
-	rm $(SOURCE_DIR)/u-boot/arch/arm/dts/artyz7.dts
+	rm -f $(SOURCE_DIR)/u-boot/configs/$(UBOOT_DEFCONFIG)
+	rm -f $(SOURCE_DIR)/u-boot/arch/arm/dts/artyz7.dts
 	rm -rf $(UBOOT_BUILD_DIR)
+	rm -f $(BUILD_DIR)/u-boot.done
 
 ### Linux targets
 .PHONY: linux linux-modules
@@ -143,8 +144,11 @@ $(BUILD_DIR)/linux_modules.done: \
 
 .PHONY: clean-linux
 clean-linux:
-	$(MAKE) -C $(LINUX_SOURCE_DIR) O=$(LINUX_BUILD_DIR) ARCH=$(ARCH) mproper
+	$(MAKE) -C $(LINUX_SOURCE_DIR) O=$(LINUX_BUILD_DIR) ARCH=$(ARCH) clean
 	rm -rf $(LINUX_BUILD_DIR)
+	rm -f $(LINUX_SOURCE_DIR)/arch/arm/configs/$(LINUX_DEFCONFIG)
+	rm -f $(BUILD_DIR)/linux.done
+	rm -f $(BUILD_DIR)/linux_modules.done
 
 ### Bootfs targets
 .PHONY: bootfs
@@ -202,6 +206,7 @@ $(BUILD_DIR)/bootfs.done: \
 .PHONY: clean-bootfs
 clean-bootfs:
 	rm -rf $(BUILD_DIR)/bootfs
+	rm -f $(BUILD_DIR)/bootfs.done
 
 ### Rootfs targets
 .PHONY: rootfs
@@ -265,6 +270,12 @@ clean-rootfs:
 		sudo rm -rf $(BUILD_DIR)/rootfs; \
 	fi
 	rm -f $(BUILD_DIR)/rootfs_untar.done
+	rm -f $(BUILD_DIR)/rootfs_passwd.done
+	rm -f $(BUILD_DIR)/rootfs_modules.done
+	rm -f $(BUILD_DIR)/rootfs_systemd.done
+	rm -f $(BUILD_DIR)/rootfs_getty.done
+	rm -f $(BUILD_DIR)/rootfs.done
+	rm -f $(BUILD_DIR)/$(ROOTFS_TGZ)
 
 ### Initramfs targets
 .PHONY: initramfs busybox
@@ -320,7 +331,9 @@ $(BUILD_DIR)/initramfs.done: \
 
 .PHONY: clean-busybox clean-initramfs
 clean-busybox:
-	rm $(BUILD_DIR)/busybox_untar.done
+	rm -f $(BUILD_DIR)/busybox_untar.done
 	rm -rf $(BUILD_DIR)/$(BUSYBOX_BASE)
+	rm -f $(BUILD_DIR)/$(BUSYBOX_TBZ2)
 clean-initramfs:
 	rm -rf $(BUILD_DIR)/initramfs
+	rm -f $(BUILD_DIR)/initramfs.done
