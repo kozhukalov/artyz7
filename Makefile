@@ -86,12 +86,12 @@ $(BUILD_DIR)/cross-compile.done: $(BUILD_DIR)/$(CROSS_COMPILE_TXZ)
 .PHONY: u-boot
 u-boot: $(BUILD_DIR)/u-boot.done
 
-$(UBOOT_SOURCE_DIR)/configs/$(UBOOT_DEFCONFIG): $(SOURCE_DIR)/$(UBOOT_DEFCONFIG)
+$(UBOOT_SOURCE_DIR)/configs/artyz7_defconfig: $(SOURCE_DIR)/$(UBOOT_DEFCONFIG)
 	$(ACTION.COPY)
 
-$(UBOOT_BUILD_DIR)/.config: $(UBOOT_SOURCE_DIR)/configs/$(UBOOT_DEFCONFIG)
+$(UBOOT_BUILD_DIR)/.config: $(UBOOT_SOURCE_DIR)/configs/artyz7_defconfig
 	mkdir -p $(UBOOT_BUILD_DIR)
-	$(MAKE) -j4 -C $(UBOOT_SOURCE_DIR) O=$(UBOOT_BUILD_DIR) ARCH=$(ARCH) $(UBOOT_DEFCONFIG)
+	$(MAKE) -j4 -C $(UBOOT_SOURCE_DIR) O=$(UBOOT_BUILD_DIR) ARCH=$(ARCH) artyz7_defconfig
 
 $(UBOOT_SOURCE_DIR)/arch/arm/dts/artyz7.dts: $(SOURCE_DIR)/$(DEVICE_TREE)
 	$(ACTION.COPY)
@@ -110,7 +110,7 @@ $(BUILD_DIR)/u-boot.done: \
 .PHONY: clean-u-boot
 clean-u-boot:
 	$(MAKE) -C $(UBOOT_SOURCE_DIR) O=$(UBOOT_BUILD_DIR) distclean
-	rm -f $(UBOOT_SOURCE_DIR)/configs/$(UBOOT_DEFCONFIG)
+	rm -f $(UBOOT_SOURCE_DIR)/configs/artyz7_defconfig
 	rm -f $(UBOOT_SOURCE_DIR)/arch/arm/dts/artyz7.dts
 	rm -rf $(UBOOT_BUILD_DIR)
 	rm -f $(BUILD_DIR)/u-boot.done
@@ -120,12 +120,12 @@ clean-u-boot:
 linux: $(BUILD_DIR)/linux.done
 linux-modules: $(BUILD_DIR)/linux_modules.done
 
-$(LINUX_SOURCE_DIR)/arch/arm/configs/$(LINUX_DEFCONFIG): $(SOURCE_DIR)/$(LINUX_DEFCONFIG)
+$(LINUX_SOURCE_DIR)/arch/arm/configs/artyz7_defconfig: $(SOURCE_DIR)/$(LINUX_DEFCONFIG)
 	$(ACTION.COPY)
 
-$(LINUX_BUILD_DIR)/.config: $(LINUX_SOURCE_DIR)/arch/arm/configs/$(LINUX_DEFCONFIG)
+$(LINUX_BUILD_DIR)/.config: $(LINUX_SOURCE_DIR)/arch/arm/configs/artyz7_defconfig
 	mkdir -p $(LINUX_BUILD_DIR)
-	$(MAKE) -C $(LINUX_SOURCE_DIR) O=$(LINUX_BUILD_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) $(LINUX_DEFCONFIG)
+	$(MAKE) -C $(LINUX_SOURCE_DIR) O=$(LINUX_BUILD_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) artyz7_defconfig
 
 $(LINUX_BUILD_DIR)/arch/arm/boot/zImage: \
 		$(BUILD_DIR)/cross-compile.done \
@@ -146,7 +146,7 @@ $(BUILD_DIR)/linux_modules.done: \
 clean-linux:
 	$(MAKE) -C $(LINUX_SOURCE_DIR) O=$(LINUX_BUILD_DIR) ARCH=$(ARCH) clean
 	rm -rf $(LINUX_BUILD_DIR)
-	rm -f $(LINUX_SOURCE_DIR)/arch/arm/configs/$(LINUX_DEFCONFIG)
+	rm -f $(LINUX_SOURCE_DIR)/arch/arm/configs/artyz7_defconfig
 	rm -f $(BUILD_DIR)/linux.done
 	rm -f $(BUILD_DIR)/linux_modules.done
 
