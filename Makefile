@@ -323,8 +323,8 @@ $(BUILD_DIR)/initramfs.done: \
 		$(BUILD_DIR)/initramfs/dev/sda \
 		$(BUILD_DIR)/initramfs/dev/console
 	mkdir -p $(BUILD_DIR)/initramfs/{bin,sbin,dev,etc,mnt,proc,sys,usr,tmp}
-	mkdir -p $(BUILD_DIR)/usr/{bin,sbin}
-	mkdir -p $(BUILD_DIR)/proc/sys/kernel
+	mkdir -p $(BUILD_DIR)/initramfs/usr/{bin,sbin}
+	mkdir -p $(BUILD_DIR)/initramfs/proc/sys/kernel
 	rsync -a $(BUILD_DIR)/$(BUSYBOX_BASE)/_install/ $(BUILD_DIR)/initramfs
 	$(MAKE) -C $(LINUX_SOURCE_DIR) O=$(LINUX_BUILD_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) modules_install INSTALL_MOD_PATH=$(BUILD_DIR)/initramfs
 	$(ACTION.TOUCH)
