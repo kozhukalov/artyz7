@@ -241,7 +241,7 @@ $(BUILD_DIR)/rootfs_systemd.done: \
 	sudo mount --make-rslave $(BUILD_DIR)/rootfs/sys/
 	sudo mount -t proc none $(BUILD_DIR)/rootfs/proc/
 	sudo mount -t tmpfs none $(BUILD_DIR)/rootfs/tmp/
-	sudo chroot $(BUILD_DIR)/rootfs /bin/bash -c "apt-get update && apt-get install -y systemd"
+	sudo chroot $(BUILD_DIR)/rootfs /bin/bash -c "apt-get update && apt-get install -y systemd kmod iproute2 telnet dnsutils iputils-ping less vim"
 	sudo chroot $(BUILD_DIR)/rootfs /bin/bash -c "ln -s /lib/systemd/systemd /sbin/init"
 	sudo umount $(BUILD_DIR)/rootfs/tmp/
 	sudo umount $(BUILD_DIR)/rootfs/proc/
