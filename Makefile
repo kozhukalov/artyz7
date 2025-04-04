@@ -253,11 +253,24 @@ $(BUILD_DIR)/rootfs_getty.done: $(BUILD_DIR)/rootfs_systemd.done
 	sudo chroot $(BUILD_DIR)/rootfs bash -c "cd /etc/systemd/system/getty.target.wants && rm getty@*.service && ln -s /lib/systemd/system/getty@.service getty@ttyPS0.service"
 	$(ACTION.TOUCH)
 
+$(BUILD_DIR)/rootfs_configure.done: $(BUILD_DIR)/rootfs_systemd.done
+	sudo mkdir -p $(BUILD_DIR)/rootfs/etc/network
+	sudo cp $(SOURCE_DIR)/etc/interfaces $(BUILD_DIR)/rootfs/etc/network/interfaces
+	sudo rm $(BUILD_DIR)/rootfs/etc/resolv.conf
+	sudo cp $(SOURCE_DIR)/etc/resolv.conf $(BUILD_DIR)/rootfs/etc/resolv.conf
+	sudo mkdir -p $(BUILD_DIR)/rootfs/root/.ssh
+	sudo chmod 700 $(BUILD_DIR)/rootfs/root/.ssh
+	sudo cp $(SOURCE_DIR)/etc/authorized_keys $(BUILD_DIR)/rootfs/root/.ssh/authorized_keys
+	sudo chmod 600 $(BUILD_DIR)/rootfs/root/.ssh/authorized_keys
+	sudo chown -R root:root $(BUILD_DIR)/rootfs/root
+	$(ACTION.TOUCH)
+
 $(BUILD_DIR)/rootfs.done: \
 		$(BUILD_DIR)/rootfs_passwd.done \
 		$(BUILD_DIR)/rootfs_modules.done \
 		$(BUILD_DIR)/rootfs_systemd.done \
-		$(BUILD_DIR)/rootfs_getty.done
+		$(BUILD_DIR)/rootfs_getty.done \
+		$(BUILD_DIR)/rootfs_configure.done
 	$(ACTION.TOUCH)
 
 .PHONY: clean-rootfs
@@ -274,6 +287,7 @@ clean-rootfs:
 	rm -f $(BUILD_DIR)/rootfs_modules.done
 	rm -f $(BUILD_DIR)/rootfs_systemd.done
 	rm -f $(BUILD_DIR)/rootfs_getty.done
+	rm -f $(BUILD_DIR)/rootfs_configure.done
 	rm -f $(BUILD_DIR)/rootfs.done
 	rm -f $(BUILD_DIR)/$(ROOTFS_TGZ)
 
