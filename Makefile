@@ -222,7 +222,10 @@ $(BUILD_DIR)/rootfs_untar.done: $(BUILD_DIR)/$(ROOTFS_TGZ)
 	$(ACTION.TOUCH)
 
 $(BUILD_DIR)/rootfs_passwd.done: $(BUILD_DIR)/rootfs_untar.done
-	echo "root:root" | sudo chpasswd -R $(BUILD_DIR)/rootfs
+#	echo "root:root" | sudo chpasswd -R $(BUILD_DIR)/rootfs
+	@HASH=$$(python3 -c "import crypt; print(crypt.crypt(\"root\", crypt.mksalt(crypt.METHOD_SHA512)))") && \
+	echo "Updating root password in $(BUILD_DIR)/rootfs/etc/shadow..." && \
+	sed -i "s|^root:[^:]*:|root:$$HASH:|" $(BUILD_DIR)/rootfs/etc/shadow
 	$(ACTION.TOUCH)
 
 $(BUILD_DIR)/rootfs_modules.done: \
